@@ -1,0 +1,60 @@
+- name: Setup
+  hosts: server
+  vars:
+    ansible_python_interpreter: '/usr/bin/python3'
+    docker_install_compose: false
+    pip_install_packages:
+        - name: docker
+    security_autoupdate_reboot: true
+    security_ssh_permit_root_login: "yes"
+    swap_file_size_mb: 2048
+
+  roles:
+      - role: geerlingguy.docker
+      - role: geerlingguy.pip
+      - role: geerlingguy.security
+      - role: geerlingguy.swap
+
+  tasks:
+    - pip:
+        name: docker
+
+    - name: Create data directory
+      file:
+        path: /data
+        state: directory
+
+    - name: Copy server.properties
+      copy:
+        src: server.properties
+        dest: /data/server.properties
+
+    - name: Copy whitelist.json
+      copy:
+        src: whitelist.json
+        dest: /data/whitelist.json
+
+    - name: Start minecraft server
+      docker_container:
+        name: minecraft
+        image: itzg/minecraft-server:latest
+        log_driver: json-file
+        restart_policy: unless-stopped
+        log_options:
+          'max-size': '5m'
+          'max-file': '3'
+        state: started
+        env:
+          ENABLE_AUTOPAUSE: 'TRUE'
+          EULA: 'TRUE'
+        volumes:
+          - /data:/data
+        published_ports:
+          - 25565:25565
+
+    - name: Restart the minecraft server at midnight to pick up updates
+      cron:
+        name: "restart minecraft"
+        minute: "0"
+        hour: "13"
+        job: "docker restart minecraft > /dev/null"
